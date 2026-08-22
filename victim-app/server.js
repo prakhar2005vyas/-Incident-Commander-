@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,7 +84,7 @@ app.post('/checkout', (req, res) => {
       latency_ms: simulatedLatency,
       timestamp: new Date().toISOString(),
     });
-  }, 20); // Quick response for local testing while reporting simulated latency
+  }, 20);
 });
 
 // Traffic simulation trigger
@@ -126,7 +126,7 @@ app.post('/simulate', (req, res) => {
 });
 
 const PORT = process.env.PORT || 4000;
-if (process.env.NODE_ENV !== 'test') {
+if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   app.listen(PORT, () => {
     console.log(`Victim Checkout Service listening on http://localhost:${PORT}`);
   });
