@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// NOTE: Known limitations (relative path resolution & regex replace edge cases) to revisit later.
 const targetFile = path.resolve('node_modules/kysely/dist/migration/file-migration-provider.js');
 
 if (fs.existsSync(targetFile)) {
