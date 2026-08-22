@@ -8,8 +8,9 @@
   },
   "scripts": {
     "start": "trueforge",
+    "victim": "node victim-app/server.js",
     "postinstall": "node scripts/patch_kysely.js",
-    "test": "node --test"
+    "test": "node scripts/test_phase2.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

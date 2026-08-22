@@ -24,8 +24,8 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 *.db
-metrics_store.json
-active_state.json
+/metrics_store.json
+/active_state.json
 
 # IDE / OS files
 .DS_Store
