@@ -52,6 +52,8 @@ mcpServers:
     command: node
     args: ["mcp-servers/rollback/index.js"]
     description: "Deployment rollback provider (hard-gated with human approval)"
+    # NOTE: Gating is not yet enforced at runtime in Phase 1 harness skeleton;
+    # Real approval-gate verification and enforcement logic lands in Phase 6 after design review.
     gated: true
 
 sandbox:

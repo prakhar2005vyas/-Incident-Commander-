@@ -41,12 +41,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   if (name === 'rollback_to') {
-    const deployId = args?.deploy_id || 'deploy-2';
+    const deployId = args?.deploy_id;
+    if (!deployId || typeof deployId !== 'string' || deployId.trim() === '') {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: false,
+              error: 'Missing required parameter: deploy_id',
+            }),
+          },
+        ],
+      };
+    }
+
+    // Stub behavior: Explicitly not implemented yet until Phase 3/6
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({ success: true, new_active_deploy: deployId }),
+          text: JSON.stringify({
+            success: false,
+            error: 'Rollback execution not implemented yet (stub only; full logic lands in Phase 3 / Phase 6)',
+            target_deploy: deployId,
+          }),
         },
       ],
     };

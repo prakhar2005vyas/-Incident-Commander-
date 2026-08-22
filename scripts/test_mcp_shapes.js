@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// NOTE: Known lower-priority test helper limitations (e.g. error isolation & test harness robustness) to revisit in later polish phases.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import path from 'node:path';
@@ -56,9 +57,10 @@ async function main() {
     { name: 'get_deploy_diff', args: { deploy_id: 'deploy-3' } },
   ]);
 
-  // 3. Rollback MCP
+  // 3. Rollback MCP (testing valid target deploy and missing deploy_id rejection)
   await testServer('./mcp-servers/rollback/index.js', [
     { name: 'rollback_to', args: { deploy_id: 'deploy-2' } },
+    { name: 'rollback_to', args: {} },
   ]);
 }
 
