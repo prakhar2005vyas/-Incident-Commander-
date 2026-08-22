@@ -1,0 +1,62 @@
+# TrueForge Harness Configuration
+# Root Cause — Incident Commander Agent
+
+version: "1"
+
+providers:
+  groq:
+    type: openai-compatible
+    baseUrl: https://api.groq.com/openai/v1
+    apiKey: ${GROQ_API_KEY}
+    models:
+      - id: openai/gpt-oss-120b
+        name: "Groq GPT-OSS 120B (Reasoning, Primary)"
+        toolCalling: true
+      - id: openai/gpt-oss-20b
+        name: "Groq GPT-OSS 20B (Fast Reasoning)"
+        toolCalling: true
+
+  gemini:
+    type: gemini
+    apiKey: ${GEMINI_API_KEY}
+    models:
+      - id: gemini-3.6-flash
+        name: "Gemini 3.6 Flash (Secondary/Fallback)"
+        toolCalling: true
+
+agent:
+  id: incident-commander
+  name: "Root Cause Incident Commander"
+  model: groq:openai/gpt-oss-120b
+  fallbackModel: gemini:gemini-3.6-flash
+  systemPrompt: |
+    You are the Root Cause Incident Commander agent.
+    Your mission is to autonomously investigate production service alerts, inspect metrics snapshots, review deployment history, and run sandboxed bisection scripts to isolate root causes.
+    CRITICAL RULE: You must NEVER execute a rollback action without explicit human authorization.
+  
+mcpServers:
+  metrics:
+    transport: stdio
+    command: node
+    args: ["mcp-servers/metrics/index.js"]
+    description: "Read-only metrics telemetry provider (error rate, p95 latency)"
+
+  deploys:
+    transport: stdio
+    command: node
+    args: ["mcp-servers/deploys/index.js"]
+    description: "Read-only deployment history and commit diffs provider"
+
+  rollback:
+    transport: stdio
+    command: node
+    args: ["mcp-servers/rollback/index.js"]
+    description: "Deployment rollback provider (hard-gated with human approval)"
+    # NOTE: Gating is not yet enforced at runtime in Phase 1 harness skeleton;
+    # Real approval-gate verification and enforcement logic lands in Phase 6 after design review.
+    gated: true
+
+sandbox:
+  provider: daytona
+  apiKey: ${DAYTONA_API_KEY}
+  scriptsDir: "./sandbox-scripts"
