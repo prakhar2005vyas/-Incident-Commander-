@@ -41,12 +41,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   if (name === 'rollback_to') {
-    const deployId = args?.deploy_id || 'v1.0.0';
+    const deployId = args?.deploy_id || 'deploy-2';
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({ success: true, new_active_deploy: deployId, timestamp: new Date().toISOString() }),
+          text: JSON.stringify({ success: true, new_active_deploy: deployId }),
         },
       ],
     };

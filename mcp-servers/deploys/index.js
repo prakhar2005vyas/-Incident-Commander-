@@ -57,7 +57,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         {
           type: 'text',
           text: JSON.stringify([
-            { id: 'v1.0.0', timestamp: new Date().toISOString(), summary: 'Initial stable release' },
+            { id: 'deploy-5', timestamp: new Date().toISOString(), summary: 'Add caching layer' },
+            { id: 'deploy-4', timestamp: new Date(Date.now() - 3600000).toISOString(), summary: 'Update retry count' },
+            { id: 'deploy-3', timestamp: new Date(Date.now() - 7200000).toISOString(), summary: 'Bump gateway timeout' },
+            { id: 'deploy-2', timestamp: new Date(Date.now() - 10800000).toISOString(), summary: 'Fix cart serialization' },
+            { id: 'deploy-1', timestamp: new Date(Date.now() - 14400000).toISOString(), summary: 'Initial checkout release' },
           ]),
         },
       ],
@@ -65,12 +69,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   if (name === 'get_deploy_diff') {
-    const deployId = args?.deploy_id || 'unknown';
+    const deployId = args?.deploy_id || 'deploy-3';
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({ deploy_id: deployId, diff_text: 'Stub diff for deploy ' + deployId }),
+          text: JSON.stringify({ diff_text: `diff --git a/server.js b/server.js\n--- a/server.js\n+++ b/server.js\n@@ -12,3 +12,3 @@\n-const TIMEOUT_MS = 2000;\n+const TIMEOUT_MS = 10000;\n` }),
         },
       ],
     };

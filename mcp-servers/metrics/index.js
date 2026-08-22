@@ -51,16 +51,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  const service = args?.service || 'checkout';
-  const time_range = args?.time_range || '15m';
+  const { name } = request.params;
 
   if (name === 'get_error_rate') {
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({ rate: 0.01, timestamp: new Date().toISOString(), service, time_range }),
+          text: JSON.stringify({ rate: 0.01, timestamp: new Date().toISOString() }),
         },
       ],
     };
@@ -71,7 +69,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({ p95_ms: 120.5, timestamp: new Date().toISOString(), service, time_range }),
+          text: JSON.stringify({ p95_ms: 120.5, timestamp: new Date().toISOString() }),
         },
       ],
     };
