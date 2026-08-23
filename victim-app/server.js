@@ -48,7 +48,7 @@ const IN_MEMORY_DEFAULT_METRICS = {
   },
 };
 
-// In-memory fallback state in case filesystem write fails
+// In-memory fallback state in case filesystem write fails - kept up-to-date with last known good read
 let inMemoryState = { ...IN_MEMORY_DEFAULT_STATE };
 let inMemoryMetrics = JSON.parse(JSON.stringify(IN_MEMORY_DEFAULT_METRICS));
 
@@ -96,7 +96,7 @@ function ensureRuntimeDataFiles() {
 
 ensureRuntimeDataFiles();
 
-// Stateless active deploy reader: reads fresh from disk each call; only uses in-memory for that call if disk read/parse fails
+// Stateless active deploy reader: reads fresh from disk each call and updates inMemoryState to last known good on success
 function getActiveDeploy() {
   const deploys = readDeploysCatalog();
   let state = inMemoryState;
@@ -107,28 +107,30 @@ function getActiveDeploy() {
       const parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
       if (parsed && typeof parsed === 'object' && parsed.active_deploy) {
         state = parsed;
+        inMemoryState = parsed; // update in-memory state on every successful disk read
       }
     }
   } catch (err) {
-    console.error('[getActiveDeploy] Error reading active_state.json, falling back to in-memory state for this call:', err.message);
+    console.error('[getActiveDeploy] Error reading active_state.json, falling back to last known-good in-memory state:', err.message);
   }
 
   const active = deploys.find(d => d.id === state.active_deploy) || deploys[deploys.length - 1];
   return { ...active, state_updated_at: state.last_updated || new Date().toISOString() };
 }
 
-// Stateless metrics store reader: reads fresh from disk each call; only uses in-memory for that call if disk read/parse fails
+// Stateless metrics store reader: reads fresh from disk each call and updates inMemoryMetrics to last known good on success
 function getMetricsStore() {
   try {
     ensureRuntimeDataFiles();
     if (fs.existsSync(METRICS_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(METRICS_FILE, 'utf-8'));
       if (parsed && typeof parsed === 'object' && parsed.checkout) {
+        inMemoryMetrics = parsed; // update in-memory metrics on every successful disk read
         return parsed;
       }
     }
   } catch (err) {
-    console.error('[getMetricsStore] Error reading metrics_store.json, falling back to in-memory metrics for this call:', err.message);
+    console.error('[getMetricsStore] Error reading metrics_store.json, falling back to last known-good in-memory metrics:', err.message);
   }
   return inMemoryMetrics;
 }

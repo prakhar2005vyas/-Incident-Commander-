@@ -37,7 +37,8 @@ async function simulateTraffic(port, requests = 1000) {
 
 async function run() {
   const server = http.createServer(app);
-  await new Promise(resolve => server.listen(4002, resolve));
+  await new Promise(resolve => server.listen(0, resolve));
+  const port = server.address().port;
 
   const deploys = JSON.parse(fs.readFileSync(DEPLOYS_FILE, 'utf-8'));
   const results = [];
@@ -53,7 +54,7 @@ async function run() {
       }, null, 2));
 
       // 2. Simulate 1,000 requests
-      const sim = await simulateTraffic(4002, 1000);
+      const sim = await simulateTraffic(port, 1000);
 
       // 3. Query Metrics MCP
       const mcp = await callMcpErrorRate();
@@ -78,9 +79,12 @@ async function run() {
       active_tag: 'v1.3.0',
       last_updated: new Date().toISOString(),
     }, null, 2));
-    await simulateTraffic(4002, 1000);
+    await simulateTraffic(port, 1000);
     server.close();
   }
 }
 
-run().catch(console.error);
+run().catch(err => {
+  console.error('[FAILED] test_all_5_deploys failed:', err.stack || err);
+  process.exit(1);
+});

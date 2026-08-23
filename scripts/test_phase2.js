@@ -52,11 +52,12 @@ async function testPhase2() {
   // 3. Test HTTP /simulate validation & history persistence
   console.log('\n--- Testing /simulate Validation & History Persistence ---');
   const server = http.createServer(app);
-  await new Promise(resolve => server.listen(4003, resolve));
+  await new Promise(resolve => server.listen(0, resolve));
+  const port = server.address().port;
 
   try {
     // Test invalid requests <= 0
-    const negRes = await fetch('http://localhost:4003/simulate', {
+    const negRes = await fetch(`http://localhost:${port}/simulate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests: -5 }),
@@ -67,7 +68,7 @@ async function testPhase2() {
     console.log('[OK] /simulate rejects negative requests count with 400');
 
     // Test invalid non-numeric requests
-    const strRes = await fetch('http://localhost:4003/simulate', {
+    const strRes = await fetch(`http://localhost:${port}/simulate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests: 'invalid' }),
@@ -83,7 +84,7 @@ async function testPhase2() {
     const initialHistoryLength = Array.isArray(storeBefore.checkout?.history) ? storeBefore.checkout.history.length : 0;
 
     // Test valid simulate appends history
-    const simRes = await fetch('http://localhost:4003/simulate', {
+    const simRes = await fetch(`http://localhost:${port}/simulate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests: 200 }),
@@ -154,6 +155,6 @@ async function testPhase2() {
 }
 
 testPhase2().catch(err => {
-  console.error('[FAILED] Phase 2 verification failed:', err);
+  console.error('[FAILED] Phase 2 verification failed:', err.stack || err);
   process.exit(1);
 });

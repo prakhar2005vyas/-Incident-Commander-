@@ -15,7 +15,9 @@ async function testCorruptionAndRecovery() {
   console.log('========================================================\n');
 
   const server = http.createServer(app);
-  await new Promise(resolve => server.listen(4005, resolve));
+  await new Promise(resolve => server.listen(0, resolve));
+  const port = server.address().port;
+  console.log(`[Test Server] Bound to ephemeral port ${port}`);
 
   try {
     // 1. Initial healthy read (deploy-5)
@@ -26,7 +28,7 @@ async function testCorruptionAndRecovery() {
       last_updated: new Date().toISOString(),
     }, null, 2));
 
-    const res1 = await fetch('http://localhost:4005/health');
+    const res1 = await fetch(`http://localhost:${port}/health`);
     const data1 = await res1.json();
     console.log('[Step 1] Normal read output:');
     console.log(JSON.stringify(data1, null, 2));
@@ -38,9 +40,9 @@ async function testCorruptionAndRecovery() {
     console.log('\n[Step 2] Corrupting active_state.json with malformed syntax...');
     fs.writeFileSync(STATE_FILE, '<<<BAD_CORRUPT_JSON_DATA>>>');
 
-    const res2 = await fetch('http://localhost:4005/health');
+    const res2 = await fetch(`http://localhost:${port}/health`);
     const data2 = await res2.json();
-    console.log('[Step 2] Read output during corruption (graceful fallback):');
+    console.log('[Step 2] Read output during corruption (graceful fallback to last known-good deploy-5):');
     console.log(JSON.stringify(data2, null, 2));
     if (!data2.active_deploy) {
       throw new Error('Server failed to return valid response during file corruption');
@@ -56,7 +58,7 @@ async function testCorruptionAndRecovery() {
     }, null, 2));
 
     // 4. Confirm the very next read picks up deploy-2 from restored disk file
-    const res3 = await fetch('http://localhost:4005/health');
+    const res3 = await fetch(`http://localhost:${port}/health`);
     const data3 = await res3.json();
     console.log('[Step 4] Read output immediately after restoration:');
     console.log(JSON.stringify(data3, null, 2));
@@ -78,6 +80,6 @@ async function testCorruptionAndRecovery() {
 }
 
 testCorruptionAndRecovery().catch(err => {
-  console.error('[FAILED] Test error:', err);
+  console.error('[FAILED] Test error with full stack:', err.stack || err);
   process.exit(1);
 });
