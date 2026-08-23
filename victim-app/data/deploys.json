@@ -1,0 +1,53 @@
+[
+  {
+    "id": "deploy-1",
+    "tag": "v1.0.0",
+    "timestamp": "2026-08-22T19:00:00.000Z",
+    "summary": "Initial checkout release",
+    "author": "dev@company.com",
+    "error_rate": 0.008,
+    "p95_latency_ms": 120.0,
+    "status": "healthy"
+  },
+  {
+    "id": "deploy-2",
+    "tag": "v1.1.0",
+    "timestamp": "2026-08-22T20:00:00.000Z",
+    "summary": "Fix cart serialization bug on multi-item checkout",
+    "author": "dev@company.com",
+    "error_rate": 0.009,
+    "p95_latency_ms": 115.0,
+    "status": "healthy"
+  },
+  {
+    "id": "deploy-3",
+    "tag": "v1.2.0",
+    "timestamp": "2026-08-22T21:00:00.000Z",
+    "summary": "Increase payment gateway timeout to 10s and remove retry backoff",
+    "author": "lead@company.com",
+    "error_rate": 0.245,
+    "p95_latency_ms": 2850.0,
+    "status": "incident_culprit",
+    "diff": "--- a/victim-app/server.js\n+++ b/victim-app/server.js\n@@ -15,4 +15,4 @@\n-const GATEWAY_TIMEOUT_MS = 2000;\n-const RETRY_ATTEMPTS = 3;\n+const GATEWAY_TIMEOUT_MS = 10000;\n+const RETRY_ATTEMPTS = 0;\n"
+  },
+  {
+    "id": "deploy-4",
+    "tag": "v1.2.1",
+    "timestamp": "2026-08-22T22:00:00.000Z",
+    "summary": "Update checkout button text and copy",
+    "author": "frontend@company.com",
+    "error_rate": 0.261,
+    "p95_latency_ms": 2920.0,
+    "status": "unhealthy"
+  },
+  {
+    "id": "deploy-5",
+    "tag": "v1.3.0",
+    "timestamp": "2026-08-22T23:00:00.000Z",
+    "summary": "Add order confirmation banner & analytics beacon",
+    "author": "product@company.com",
+    "error_rate": 0.278,
+    "p95_latency_ms": 3100.0,
+    "status": "unhealthy"
+  }
+]
