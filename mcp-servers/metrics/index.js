@@ -15,63 +15,84 @@ const DATA_DIR = path.resolve(__dirname, '../../victim-app/data');
 const STATE_FILE = path.join(DATA_DIR, 'active_state.json');
 const METRICS_FILE = path.join(DATA_DIR, 'metrics_store.json');
 
+const DEFAULT_INITIAL_STATE = {
+  service: 'checkout',
+  active_deploy: 'deploy-5',
+  active_tag: 'v1.3.0',
+  last_updated: new Date().toISOString(),
+};
+
+const DEFAULT_INITIAL_METRICS = {
+  checkout: {
+    current: {
+      rate: 0.278,
+      p95_ms: 3100.0,
+      timestamp: new Date().toISOString(),
+      deploy_id: 'deploy-5',
+      sample_count: 1000,
+    },
+    history: [
+      { deploy_id: 'deploy-1', rate: 0.008, p95_ms: 120.0, timestamp: '2026-08-22T19:30:00.000Z' },
+      { deploy_id: 'deploy-2', rate: 0.009, p95_ms: 115.0, timestamp: '2026-08-22T20:30:00.000Z' },
+      { deploy_id: 'deploy-3', rate: 0.245, p95_ms: 2850.0, timestamp: '2026-08-22T21:30:00.000Z' },
+      { deploy_id: 'deploy-4', rate: 0.261, p95_ms: 2920.0, timestamp: '2026-08-22T22:30:00.000Z' },
+      { deploy_id: 'deploy-5', rate: 0.278, p95_ms: 3100.0, timestamp: '2026-08-23T04:30:00.000Z' },
+    ],
+  },
+};
+
 function ensureRuntimeDataFiles() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.error(`[ensureRuntimeDataFiles] Failed to create directory ${DATA_DIR}:`, err.message);
   }
 
   if (!fs.existsSync(STATE_FILE)) {
-    const defaultState = {
-      service: 'checkout',
-      active_deploy: 'deploy-5',
-      active_tag: 'v1.3.0',
-      last_updated: new Date().toISOString(),
-    };
     try {
-      fs.writeFileSync(STATE_FILE, JSON.stringify(defaultState, null, 2));
-    } catch {}
+      fs.writeFileSync(STATE_FILE, JSON.stringify(DEFAULT_INITIAL_STATE, null, 2));
+    } catch (err) {
+      console.error(`[ensureRuntimeDataFiles] Failed to write state file ${STATE_FILE}:`, err.message);
+    }
   }
 
   if (!fs.existsSync(METRICS_FILE)) {
-    const defaultMetrics = {
-      checkout: {
-        current: {
-          rate: 0.278,
-          p95_ms: 3100.0,
-          timestamp: new Date().toISOString(),
-          deploy_id: 'deploy-5',
-          sample_count: 1000,
-        },
-        history: [
-          { deploy_id: 'deploy-1', rate: 0.008, p95_ms: 120.0, timestamp: '2026-08-22T19:30:00.000Z' },
-          { deploy_id: 'deploy-2', rate: 0.009, p95_ms: 115.0, timestamp: '2026-08-22T20:30:00.000Z' },
-          { deploy_id: 'deploy-3', rate: 0.245, p95_ms: 2850.0, timestamp: '2026-08-22T21:30:00.000Z' },
-          { deploy_id: 'deploy-4', rate: 0.261, p95_ms: 2920.0, timestamp: '2026-08-22T22:30:00.000Z' },
-          { deploy_id: 'deploy-5', rate: 0.278, p95_ms: 3100.0, timestamp: '2026-08-23T04:30:00.000Z' },
-        ],
-      },
-    };
     try {
-      fs.writeFileSync(METRICS_FILE, JSON.stringify(defaultMetrics, null, 2));
-    } catch {}
+      fs.writeFileSync(METRICS_FILE, JSON.stringify(DEFAULT_INITIAL_METRICS, null, 2));
+    } catch (err) {
+      console.error(`[ensureRuntimeDataFiles] Failed to write metrics file ${METRICS_FILE}:`, err.message);
+    }
   }
 }
 
 function readMetrics(service) {
   const serviceKey = (service || 'checkout').toLowerCase();
+  ensureRuntimeDataFiles();
+
   try {
-    ensureRuntimeDataFiles();
     if (fs.existsSync(METRICS_FILE)) {
       const data = JSON.parse(fs.readFileSync(METRICS_FILE, 'utf-8'));
       if (data[serviceKey]?.current) {
-        return data[serviceKey].current;
+        return { success: true, data: data[serviceKey].current };
       }
+      return {
+        success: false,
+        error: `Service "${service}" not found in telemetry store (${METRICS_FILE})`,
+      };
     }
+    return {
+      success: false,
+      error: `Telemetry store file does not exist at ${METRICS_FILE}`,
+    };
   } catch (err) {
-    console.error(`Error reading metrics store: ${err.message}`);
+    console.error(`[readMetrics] Error reading metrics store at ${METRICS_FILE}:`, err.message);
+    return {
+      success: false,
+      error: `Failed to read metrics store (${METRICS_FILE}): ${err.message}`,
+    };
   }
-  // Fallback default snapshot
-  return { rate: 0.278, p95_ms: 3100.0, timestamp: new Date().toISOString() };
 }
 
 const server = new Server(
@@ -145,7 +166,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 
-  const metrics = readMetrics(service);
+  const result = readMetrics(service);
+
+  if (!result.success) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ error: result.error }),
+        },
+      ],
+    };
+  }
 
   if (name === 'get_error_rate') {
     return {
@@ -153,8 +186,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         {
           type: 'text',
           text: JSON.stringify({
-            rate: metrics.rate,
-            timestamp: metrics.timestamp || new Date().toISOString(),
+            rate: result.data.rate,
+            timestamp: result.data.timestamp || new Date().toISOString(),
           }),
         },
       ],
@@ -167,8 +200,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         {
           type: 'text',
           text: JSON.stringify({
-            p95_ms: metrics.p95_ms,
-            timestamp: metrics.timestamp || new Date().toISOString(),
+            p95_ms: result.data.p95_ms,
+            timestamp: result.data.timestamp || new Date().toISOString(),
           }),
         },
       ],

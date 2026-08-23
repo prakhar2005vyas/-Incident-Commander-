@@ -14,42 +14,60 @@ const STATE_FILE = path.join(DATA_DIR, 'active_state.json');
 const DEPLOYS_FILE = path.join(DATA_DIR, 'deploys.json');
 const METRICS_FILE = path.join(DATA_DIR, 'metrics_store.json');
 
+const IN_MEMORY_DEFAULT_STATE = {
+  service: 'checkout',
+  active_deploy: 'deploy-5',
+  active_tag: 'v1.3.0',
+  last_updated: new Date().toISOString(),
+};
+
+const IN_MEMORY_DEFAULT_METRICS = {
+  checkout: {
+    current: {
+      rate: 0.278,
+      p95_ms: 3100.0,
+      timestamp: new Date().toISOString(),
+      deploy_id: 'deploy-5',
+      sample_count: 1000,
+    },
+    history: [
+      { deploy_id: 'deploy-1', rate: 0.008, p95_ms: 120.0, timestamp: '2026-08-22T19:30:00.000Z' },
+      { deploy_id: 'deploy-2', rate: 0.009, p95_ms: 115.0, timestamp: '2026-08-22T20:30:00.000Z' },
+      { deploy_id: 'deploy-3', rate: 0.245, p95_ms: 2850.0, timestamp: '2026-08-22T21:30:00.000Z' },
+      { deploy_id: 'deploy-4', rate: 0.261, p95_ms: 2920.0, timestamp: '2026-08-22T22:30:00.000Z' },
+      { deploy_id: 'deploy-5', rate: 0.278, p95_ms: 3100.0, timestamp: '2026-08-23T04:30:00.000Z' },
+    ],
+  },
+};
+
+// In-memory fallback state in case filesystem write fails
+let inMemoryState = { ...IN_MEMORY_DEFAULT_STATE };
+let inMemoryMetrics = JSON.parse(JSON.stringify(IN_MEMORY_DEFAULT_METRICS));
+
 // Ensure runtime data directory and default state files exist
 function ensureRuntimeDataFiles() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.error(`[ensureRuntimeDataFiles] Failed to create data dir ${DATA_DIR}:`, err.message);
   }
 
   if (!fs.existsSync(STATE_FILE)) {
-    const defaultState = {
-      service: 'checkout',
-      active_deploy: 'deploy-5',
-      active_tag: 'v1.3.0',
-      last_updated: new Date().toISOString(),
-    };
-    fs.writeFileSync(STATE_FILE, JSON.stringify(defaultState, null, 2));
+    try {
+      fs.writeFileSync(STATE_FILE, JSON.stringify(IN_MEMORY_DEFAULT_STATE, null, 2));
+    } catch (err) {
+      console.error(`[ensureRuntimeDataFiles] Failed to write default state file ${STATE_FILE}:`, err.message);
+    }
   }
 
   if (!fs.existsSync(METRICS_FILE)) {
-    const defaultMetrics = {
-      checkout: {
-        current: {
-          rate: 0.278,
-          p95_ms: 3100.0,
-          timestamp: new Date().toISOString(),
-          deploy_id: 'deploy-5',
-          sample_count: 1000,
-        },
-        history: [
-          { deploy_id: 'deploy-1', rate: 0.008, p95_ms: 120.0, timestamp: '2026-08-22T19:30:00.000Z' },
-          { deploy_id: 'deploy-2', rate: 0.009, p95_ms: 115.0, timestamp: '2026-08-22T20:30:00.000Z' },
-          { deploy_id: 'deploy-3', rate: 0.245, p95_ms: 2850.0, timestamp: '2026-08-22T21:30:00.000Z' },
-          { deploy_id: 'deploy-4', rate: 0.261, p95_ms: 2920.0, timestamp: '2026-08-22T22:30:00.000Z' },
-          { deploy_id: 'deploy-5', rate: 0.278, p95_ms: 3100.0, timestamp: '2026-08-23T04:30:00.000Z' },
-        ],
-      },
-    };
-    fs.writeFileSync(METRICS_FILE, JSON.stringify(defaultMetrics, null, 2));
+    try {
+      fs.writeFileSync(METRICS_FILE, JSON.stringify(IN_MEMORY_DEFAULT_METRICS, null, 2));
+    } catch (err) {
+      console.error(`[ensureRuntimeDataFiles] Failed to write default metrics file ${METRICS_FILE}:`, err.message);
+    }
   }
 }
 
@@ -58,21 +76,33 @@ ensureRuntimeDataFiles();
 function getActiveDeploy() {
   try {
     ensureRuntimeDataFiles();
-    const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
-    const deploys = JSON.parse(fs.readFileSync(DEPLOYS_FILE, 'utf-8'));
+    const state = fs.existsSync(STATE_FILE)
+      ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+      : inMemoryState;
+    const deploys = fs.existsSync(DEPLOYS_FILE)
+      ? JSON.parse(fs.readFileSync(DEPLOYS_FILE, 'utf-8'))
+      : [
+          { id: 'deploy-1', error_rate: 0.008, p95_latency_ms: 120.0, status: 'healthy' },
+          { id: 'deploy-5', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' },
+        ];
     const active = deploys.find(d => d.id === state.active_deploy) || deploys[deploys.length - 1];
     return { ...active, state_updated_at: state.last_updated };
-  } catch {
-    return { id: 'deploy-5', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' };
+  } catch (err) {
+    console.error('[getActiveDeploy] Error reading deploy state, using in-memory fallback:', err.message);
+    return { id: inMemoryState.active_deploy || 'deploy-5', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' };
   }
 }
 
 function getMetricsStore() {
   try {
     ensureRuntimeDataFiles();
-    return JSON.parse(fs.readFileSync(METRICS_FILE, 'utf-8'));
-  } catch {
-    return { checkout: { current: { rate: 0.278, p95_ms: 3100.0, timestamp: new Date().toISOString() }, history: [] } };
+    if (fs.existsSync(METRICS_FILE)) {
+      return JSON.parse(fs.readFileSync(METRICS_FILE, 'utf-8'));
+    }
+    return inMemoryMetrics;
+  } catch (err) {
+    console.error('[getMetricsStore] Error reading metrics store, using in-memory fallback:', err.message);
+    return inMemoryMetrics;
   }
 }
 
@@ -174,10 +204,12 @@ app.post('/simulate', (req, res) => {
     sample_count: requests,
   });
 
+  inMemoryMetrics = store;
+
   try {
     fs.writeFileSync(METRICS_FILE, JSON.stringify(store, null, 2));
   } catch (err) {
-    console.error('Failed to persist metrics store:', err);
+    console.error(`[POST /simulate] Failed to persist metrics to ${METRICS_FILE}:`, err.message);
   }
 
   res.json({

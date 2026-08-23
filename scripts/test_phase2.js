@@ -65,6 +65,11 @@ async function testPhase2() {
     }
     console.log('[OK] /simulate rejects non-numeric requests count with 400');
 
+    // Record history length BEFORE calling /simulate
+    const storePath = path.join(ROOT_DIR, 'victim-app/data/metrics_store.json');
+    const storeBefore = fs.existsSync(storePath) ? JSON.parse(fs.readFileSync(storePath, 'utf-8')) : { checkout: { history: [] } };
+    const initialHistoryLength = Array.isArray(storeBefore.checkout?.history) ? storeBefore.checkout.history.length : 0;
+
     // Test valid simulate appends history
     const simRes = await fetch('http://localhost:4003/simulate', {
       method: 'POST',
@@ -74,11 +79,13 @@ async function testPhase2() {
     const simData = await simRes.json();
     console.log('[OK] /simulate valid run measured rate:', simData.measured_error_rate);
 
-    const store = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'victim-app/data/metrics_store.json'), 'utf-8'));
-    if (!Array.isArray(store.checkout?.history) || store.checkout.history.length === 0) {
-      throw new Error('Expected store.checkout.history to contain array of telemetry snapshots');
+    // Verify history length AFTER calling /simulate has incremented by exactly 1
+    const storeAfter = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+    const newHistoryLength = Array.isArray(storeAfter.checkout?.history) ? storeAfter.checkout.history.length : 0;
+    if (newHistoryLength !== initialHistoryLength + 1) {
+      throw new Error(`Expected history length to increment from ${initialHistoryLength} to ${initialHistoryLength + 1}, but got ${newHistoryLength}`);
     }
-    console.log(`[OK] store.checkout.history length: ${store.checkout.history.length} snapshots`);
+    console.log(`[OK] store.checkout.history incremented correctly: ${initialHistoryLength} -> ${newHistoryLength} snapshots`);
   } finally {
     server.close();
   }
