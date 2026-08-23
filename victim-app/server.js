@@ -40,9 +40,11 @@ const IN_MEMORY_DEFAULT_METRICS = {
   },
 };
 
-// In-memory fallback state in case filesystem write fails
+// In-memory state and fallback flags
 let inMemoryState = { ...IN_MEMORY_DEFAULT_STATE };
 let inMemoryMetrics = JSON.parse(JSON.stringify(IN_MEMORY_DEFAULT_METRICS));
+let preferInMemoryMetrics = false;
+let preferInMemoryState = false;
 
 // Ensure runtime data directory and default state files exist
 function ensureRuntimeDataFiles() {
@@ -58,6 +60,7 @@ function ensureRuntimeDataFiles() {
     try {
       fs.writeFileSync(STATE_FILE, JSON.stringify(IN_MEMORY_DEFAULT_STATE, null, 2));
     } catch (err) {
+      preferInMemoryState = true;
       console.error(`[ensureRuntimeDataFiles] Failed to write default state file ${STATE_FILE}:`, err.message);
     }
   }
@@ -66,6 +69,7 @@ function ensureRuntimeDataFiles() {
     try {
       fs.writeFileSync(METRICS_FILE, JSON.stringify(IN_MEMORY_DEFAULT_METRICS, null, 2));
     } catch (err) {
+      preferInMemoryMetrics = true;
       console.error(`[ensureRuntimeDataFiles] Failed to write default metrics file ${METRICS_FILE}:`, err.message);
     }
   }
@@ -74,6 +78,14 @@ function ensureRuntimeDataFiles() {
 ensureRuntimeDataFiles();
 
 function getActiveDeploy() {
+  if (preferInMemoryState) {
+    const deploys = fs.existsSync(DEPLOYS_FILE)
+      ? JSON.parse(fs.readFileSync(DEPLOYS_FILE, 'utf-8'))
+      : [{ id: 'deploy-5', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' }];
+    const active = deploys.find(d => d.id === inMemoryState.active_deploy) || deploys[deploys.length - 1];
+    return { ...active, state_updated_at: inMemoryState.last_updated };
+  }
+
   try {
     ensureRuntimeDataFiles();
     const state = fs.existsSync(STATE_FILE)
@@ -81,19 +93,21 @@ function getActiveDeploy() {
       : inMemoryState;
     const deploys = fs.existsSync(DEPLOYS_FILE)
       ? JSON.parse(fs.readFileSync(DEPLOYS_FILE, 'utf-8'))
-      : [
-          { id: 'deploy-1', error_rate: 0.008, p95_latency_ms: 120.0, status: 'healthy' },
-          { id: 'deploy-5', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' },
-        ];
+      : [{ id: 'deploy-5', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' }];
     const active = deploys.find(d => d.id === state.active_deploy) || deploys[deploys.length - 1];
     return { ...active, state_updated_at: state.last_updated };
   } catch (err) {
-    console.error('[getActiveDeploy] Error reading deploy state, using in-memory fallback:', err.message);
+    preferInMemoryState = true;
+    console.error('[getActiveDeploy] Error reading deploy state, switching to in-memory fallback:', err.message);
     return { id: inMemoryState.active_deploy || 'deploy-5', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' };
   }
 }
 
 function getMetricsStore() {
+  if (preferInMemoryMetrics) {
+    return inMemoryMetrics;
+  }
+
   try {
     ensureRuntimeDataFiles();
     if (fs.existsSync(METRICS_FILE)) {
@@ -101,7 +115,8 @@ function getMetricsStore() {
     }
     return inMemoryMetrics;
   } catch (err) {
-    console.error('[getMetricsStore] Error reading metrics store, using in-memory fallback:', err.message);
+    preferInMemoryMetrics = true;
+    console.error('[getMetricsStore] Error reading metrics store, switching to in-memory fallback:', err.message);
     return inMemoryMetrics;
   }
 }
@@ -208,8 +223,10 @@ app.post('/simulate', (req, res) => {
 
   try {
     fs.writeFileSync(METRICS_FILE, JSON.stringify(store, null, 2));
+    preferInMemoryMetrics = false;
   } catch (err) {
-    console.error(`[POST /simulate] Failed to persist metrics to ${METRICS_FILE}:`, err.message);
+    preferInMemoryMetrics = true;
+    console.error(`[POST /simulate] Failed to persist metrics to ${METRICS_FILE}, switched preferInMemoryMetrics to true:`, err.message);
   }
 
   res.json({

@@ -68,7 +68,7 @@ function ensureRuntimeDataFiles() {
 }
 
 function readMetrics(service) {
-  const serviceKey = (service || 'checkout').toLowerCase();
+  const serviceKey = (typeof service === 'string' ? service.trim() : 'checkout').toLowerCase();
   ensureRuntimeDataFiles();
 
   try {
@@ -152,9 +152,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  const service = args?.service;
+  const rawService = args?.service;
 
-  if (!service || typeof service !== 'string' || service.trim() === '') {
+  if (!rawService || typeof rawService !== 'string' || rawService.trim() === '') {
     return {
       isError: true,
       content: [
@@ -166,7 +166,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 
-  const result = readMetrics(service);
+  const normalizedService = rawService.trim();
+  const result = readMetrics(normalizedService);
 
   if (!result.success) {
     return {

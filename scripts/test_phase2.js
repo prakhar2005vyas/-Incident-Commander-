@@ -10,6 +10,18 @@ import app from '../victim-app/server.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
 
+function safeReadMetricsStore(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return { checkout: { history: [] } };
+    }
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Failed to read or parse metrics store at "${filePath}": ${err.message}`);
+  }
+}
+
 async function testPhase2() {
   console.log('========================================================');
   console.log('Phase 2 Verification: Victim App & Metrics MCP Server');
@@ -65,9 +77,9 @@ async function testPhase2() {
     }
     console.log('[OK] /simulate rejects non-numeric requests count with 400');
 
-    // Record history length BEFORE calling /simulate
+    // Record history length BEFORE calling /simulate using safeReadMetricsStore
     const storePath = path.join(ROOT_DIR, 'victim-app/data/metrics_store.json');
-    const storeBefore = fs.existsSync(storePath) ? JSON.parse(fs.readFileSync(storePath, 'utf-8')) : { checkout: { history: [] } };
+    const storeBefore = safeReadMetricsStore(storePath);
     const initialHistoryLength = Array.isArray(storeBefore.checkout?.history) ? storeBefore.checkout.history.length : 0;
 
     // Test valid simulate appends history
@@ -80,7 +92,7 @@ async function testPhase2() {
     console.log('[OK] /simulate valid run measured rate:', simData.measured_error_rate);
 
     // Verify history length AFTER calling /simulate has incremented by exactly 1
-    const storeAfter = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+    const storeAfter = safeReadMetricsStore(storePath);
     const newHistoryLength = Array.isArray(storeAfter.checkout?.history) ? storeAfter.checkout.history.length : 0;
     if (newHistoryLength !== initialHistoryLength + 1) {
       throw new Error(`Expected history length to increment from ${initialHistoryLength} to ${initialHistoryLength + 1}, but got ${newHistoryLength}`);
