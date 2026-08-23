@@ -14,6 +14,14 @@ const STATE_FILE = path.join(DATA_DIR, 'active_state.json');
 const DEPLOYS_FILE = path.join(DATA_DIR, 'deploys.json');
 const METRICS_FILE = path.join(DATA_DIR, 'metrics_store.json');
 
+const HARDCODED_DEFAULT_DEPLOYS = [
+  { id: 'deploy-1', tag: 'v1.0.0', summary: 'Initial checkout release', error_rate: 0.008, p95_latency_ms: 120.0, status: 'healthy' },
+  { id: 'deploy-2', tag: 'v1.1.0', summary: 'Fix cart serialization bug on multi-item checkout', error_rate: 0.009, p95_latency_ms: 115.0, status: 'healthy' },
+  { id: 'deploy-3', tag: 'v1.2.0', summary: 'Increase payment gateway timeout to 10s and remove retry backoff', error_rate: 0.245, p95_latency_ms: 2850.0, status: 'incident_culprit' },
+  { id: 'deploy-4', tag: 'v1.2.1', summary: 'Update checkout button text and copy', error_rate: 0.261, p95_latency_ms: 2920.0, status: 'unhealthy' },
+  { id: 'deploy-5', tag: 'v1.3.0', summary: 'Add order confirmation banner & analytics beacon', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' },
+];
+
 const IN_MEMORY_DEFAULT_STATE = {
   service: 'checkout',
   active_deploy: 'deploy-5',
@@ -40,11 +48,24 @@ const IN_MEMORY_DEFAULT_METRICS = {
   },
 };
 
-// In-memory state and fallback flags
+// In-memory fallback state in case filesystem write fails
 let inMemoryState = { ...IN_MEMORY_DEFAULT_STATE };
 let inMemoryMetrics = JSON.parse(JSON.stringify(IN_MEMORY_DEFAULT_METRICS));
-let preferInMemoryMetrics = false;
-let preferInMemoryState = false;
+
+// Safe reader for deploys catalog with hardcoded last-resort default
+function readDeploysCatalog() {
+  try {
+    if (fs.existsSync(DEPLOYS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(DEPLOYS_FILE, 'utf-8'));
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.error('[readDeploysCatalog] Error reading deploys.json, using hardcoded catalog fallback:', err.message);
+  }
+  return HARDCODED_DEFAULT_DEPLOYS;
+}
 
 // Ensure runtime data directory and default state files exist
 function ensureRuntimeDataFiles() {
@@ -60,7 +81,6 @@ function ensureRuntimeDataFiles() {
     try {
       fs.writeFileSync(STATE_FILE, JSON.stringify(IN_MEMORY_DEFAULT_STATE, null, 2));
     } catch (err) {
-      preferInMemoryState = true;
       console.error(`[ensureRuntimeDataFiles] Failed to write default state file ${STATE_FILE}:`, err.message);
     }
   }
@@ -69,7 +89,6 @@ function ensureRuntimeDataFiles() {
     try {
       fs.writeFileSync(METRICS_FILE, JSON.stringify(IN_MEMORY_DEFAULT_METRICS, null, 2));
     } catch (err) {
-      preferInMemoryMetrics = true;
       console.error(`[ensureRuntimeDataFiles] Failed to write default metrics file ${METRICS_FILE}:`, err.message);
     }
   }
@@ -77,48 +96,41 @@ function ensureRuntimeDataFiles() {
 
 ensureRuntimeDataFiles();
 
+// Stateless active deploy reader: reads fresh from disk each call; only uses in-memory for that call if disk read/parse fails
 function getActiveDeploy() {
-  if (preferInMemoryState) {
-    const deploys = fs.existsSync(DEPLOYS_FILE)
-      ? JSON.parse(fs.readFileSync(DEPLOYS_FILE, 'utf-8'))
-      : [{ id: 'deploy-5', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' }];
-    const active = deploys.find(d => d.id === inMemoryState.active_deploy) || deploys[deploys.length - 1];
-    return { ...active, state_updated_at: inMemoryState.last_updated };
-  }
+  const deploys = readDeploysCatalog();
+  let state = inMemoryState;
 
   try {
     ensureRuntimeDataFiles();
-    const state = fs.existsSync(STATE_FILE)
-      ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
-      : inMemoryState;
-    const deploys = fs.existsSync(DEPLOYS_FILE)
-      ? JSON.parse(fs.readFileSync(DEPLOYS_FILE, 'utf-8'))
-      : [{ id: 'deploy-5', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' }];
-    const active = deploys.find(d => d.id === state.active_deploy) || deploys[deploys.length - 1];
-    return { ...active, state_updated_at: state.last_updated };
+    if (fs.existsSync(STATE_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+      if (parsed && typeof parsed === 'object' && parsed.active_deploy) {
+        state = parsed;
+      }
+    }
   } catch (err) {
-    preferInMemoryState = true;
-    console.error('[getActiveDeploy] Error reading deploy state, switching to in-memory fallback:', err.message);
-    return { id: inMemoryState.active_deploy || 'deploy-5', error_rate: 0.278, p95_latency_ms: 3100.0, status: 'unhealthy' };
+    console.error('[getActiveDeploy] Error reading active_state.json, falling back to in-memory state for this call:', err.message);
   }
+
+  const active = deploys.find(d => d.id === state.active_deploy) || deploys[deploys.length - 1];
+  return { ...active, state_updated_at: state.last_updated || new Date().toISOString() };
 }
 
+// Stateless metrics store reader: reads fresh from disk each call; only uses in-memory for that call if disk read/parse fails
 function getMetricsStore() {
-  if (preferInMemoryMetrics) {
-    return inMemoryMetrics;
-  }
-
   try {
     ensureRuntimeDataFiles();
     if (fs.existsSync(METRICS_FILE)) {
-      return JSON.parse(fs.readFileSync(METRICS_FILE, 'utf-8'));
+      const parsed = JSON.parse(fs.readFileSync(METRICS_FILE, 'utf-8'));
+      if (parsed && typeof parsed === 'object' && parsed.checkout) {
+        return parsed;
+      }
     }
-    return inMemoryMetrics;
   } catch (err) {
-    preferInMemoryMetrics = true;
-    console.error('[getMetricsStore] Error reading metrics store, switching to in-memory fallback:', err.message);
-    return inMemoryMetrics;
+    console.error('[getMetricsStore] Error reading metrics_store.json, falling back to in-memory metrics for this call:', err.message);
   }
+  return inMemoryMetrics;
 }
 
 // Health status endpoint
@@ -223,10 +235,8 @@ app.post('/simulate', (req, res) => {
 
   try {
     fs.writeFileSync(METRICS_FILE, JSON.stringify(store, null, 2));
-    preferInMemoryMetrics = false;
   } catch (err) {
-    preferInMemoryMetrics = true;
-    console.error(`[POST /simulate] Failed to persist metrics to ${METRICS_FILE}, switched preferInMemoryMetrics to true:`, err.message);
+    console.error(`[POST /simulate] Failed to persist metrics to ${METRICS_FILE}:`, err.message);
   }
 
   res.json({
