@@ -62,7 +62,7 @@ function readDeploysCatalog() {
       }
     }
   } catch (err) {
-    console.error('[readDeploysCatalog] Error reading deploys.json, using hardcoded catalog fallback:', err.message);
+    console.error('[readDeploysCatalog] Error reading deploys.json, using hardcoded catalog fallback:', err.stack || err);
   }
   return HARDCODED_DEFAULT_DEPLOYS;
 }
@@ -74,14 +74,14 @@ function ensureRuntimeDataFiles() {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
   } catch (err) {
-    console.error(`[ensureRuntimeDataFiles] Failed to create data dir ${DATA_DIR}:`, err.message);
+    console.error(`[ensureRuntimeDataFiles] Failed to create data dir ${DATA_DIR}:`, err.stack || err);
   }
 
   if (!fs.existsSync(STATE_FILE)) {
     try {
       fs.writeFileSync(STATE_FILE, JSON.stringify(IN_MEMORY_DEFAULT_STATE, null, 2));
     } catch (err) {
-      console.error(`[ensureRuntimeDataFiles] Failed to write default state file ${STATE_FILE}:`, err.message);
+      console.error(`[ensureRuntimeDataFiles] Failed to write default state file ${STATE_FILE}:`, err.stack || err);
     }
   }
 
@@ -89,7 +89,7 @@ function ensureRuntimeDataFiles() {
     try {
       fs.writeFileSync(METRICS_FILE, JSON.stringify(IN_MEMORY_DEFAULT_METRICS, null, 2));
     } catch (err) {
-      console.error(`[ensureRuntimeDataFiles] Failed to write default metrics file ${METRICS_FILE}:`, err.message);
+      console.error(`[ensureRuntimeDataFiles] Failed to write default metrics file ${METRICS_FILE}:`, err.stack || err);
     }
   }
 }
@@ -111,7 +111,7 @@ function getActiveDeploy() {
       }
     }
   } catch (err) {
-    console.error('[getActiveDeploy] Error reading active_state.json, falling back to last known-good in-memory state:', err.message);
+    console.error('[getActiveDeploy] Error reading active_state.json, falling back to last known-good in-memory state:', err.stack || err);
   }
 
   const active = deploys.find(d => d.id === state.active_deploy) || deploys[deploys.length - 1];
@@ -130,7 +130,7 @@ function getMetricsStore() {
       }
     }
   } catch (err) {
-    console.error('[getMetricsStore] Error reading metrics_store.json, falling back to last known-good in-memory metrics:', err.message);
+    console.error('[getMetricsStore] Error reading metrics_store.json, falling back to last known-good in-memory metrics:', err.stack || err);
   }
   return inMemoryMetrics;
 }
@@ -238,7 +238,7 @@ app.post('/simulate', (req, res) => {
   try {
     fs.writeFileSync(METRICS_FILE, JSON.stringify(store, null, 2));
   } catch (err) {
-    console.error(`[POST /simulate] Failed to persist metrics to ${METRICS_FILE}:`, err.message);
+    console.error(`[POST /simulate] Failed to persist metrics to ${METRICS_FILE}:`, err.stack || err);
   }
 
   res.json({

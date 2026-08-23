@@ -47,14 +47,14 @@ function ensureRuntimeDataFiles() {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
   } catch (err) {
-    console.error(`[ensureRuntimeDataFiles] Failed to create directory ${DATA_DIR}:`, err.message);
+    console.error(`[ensureRuntimeDataFiles] Failed to create directory ${DATA_DIR}:`, err.stack || err);
   }
 
   if (!fs.existsSync(STATE_FILE)) {
     try {
       fs.writeFileSync(STATE_FILE, JSON.stringify(DEFAULT_INITIAL_STATE, null, 2));
     } catch (err) {
-      console.error(`[ensureRuntimeDataFiles] Failed to write state file ${STATE_FILE}:`, err.message);
+      console.error(`[ensureRuntimeDataFiles] Failed to write state file ${STATE_FILE}:`, err.stack || err);
     }
   }
 
@@ -62,7 +62,7 @@ function ensureRuntimeDataFiles() {
     try {
       fs.writeFileSync(METRICS_FILE, JSON.stringify(DEFAULT_INITIAL_METRICS, null, 2));
     } catch (err) {
-      console.error(`[ensureRuntimeDataFiles] Failed to write metrics file ${METRICS_FILE}:`, err.message);
+      console.error(`[ensureRuntimeDataFiles] Failed to write metrics file ${METRICS_FILE}:`, err.stack || err);
     }
   }
 }
@@ -87,7 +87,7 @@ function readMetrics(service) {
       error: `Telemetry store file does not exist at ${METRICS_FILE}`,
     };
   } catch (err) {
-    console.error(`[readMetrics] Error reading metrics store at ${METRICS_FILE}:`, err.message);
+    console.error(`[readMetrics] Error reading metrics store at ${METRICS_FILE}:`, err.stack || err);
     return {
       success: false,
       error: `Failed to read metrics store (${METRICS_FILE}): ${err.message}`,
@@ -218,6 +218,6 @@ async function run() {
 }
 
 run().catch((error) => {
-  console.error('Fatal error in metrics MCP server:', error);
+  console.error('Fatal error in metrics MCP server:', error.stack || error);
   process.exit(1);
 });
