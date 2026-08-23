@@ -12,11 +12,55 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(__dirname, '../../victim-app/data');
+const STATE_FILE = path.join(DATA_DIR, 'active_state.json');
 const METRICS_FILE = path.join(DATA_DIR, 'metrics_store.json');
+
+function ensureRuntimeDataFiles() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
+  if (!fs.existsSync(STATE_FILE)) {
+    const defaultState = {
+      service: 'checkout',
+      active_deploy: 'deploy-5',
+      active_tag: 'v1.3.0',
+      last_updated: new Date().toISOString(),
+    };
+    try {
+      fs.writeFileSync(STATE_FILE, JSON.stringify(defaultState, null, 2));
+    } catch {}
+  }
+
+  if (!fs.existsSync(METRICS_FILE)) {
+    const defaultMetrics = {
+      checkout: {
+        current: {
+          rate: 0.278,
+          p95_ms: 3100.0,
+          timestamp: new Date().toISOString(),
+          deploy_id: 'deploy-5',
+          sample_count: 1000,
+        },
+        history: [
+          { deploy_id: 'deploy-1', rate: 0.008, p95_ms: 120.0, timestamp: '2026-08-22T19:30:00.000Z' },
+          { deploy_id: 'deploy-2', rate: 0.009, p95_ms: 115.0, timestamp: '2026-08-22T20:30:00.000Z' },
+          { deploy_id: 'deploy-3', rate: 0.245, p95_ms: 2850.0, timestamp: '2026-08-22T21:30:00.000Z' },
+          { deploy_id: 'deploy-4', rate: 0.261, p95_ms: 2920.0, timestamp: '2026-08-22T22:30:00.000Z' },
+          { deploy_id: 'deploy-5', rate: 0.278, p95_ms: 3100.0, timestamp: '2026-08-23T04:30:00.000Z' },
+        ],
+      },
+    };
+    try {
+      fs.writeFileSync(METRICS_FILE, JSON.stringify(defaultMetrics, null, 2));
+    } catch {}
+  }
+}
 
 function readMetrics(service) {
   const serviceKey = (service || 'checkout').toLowerCase();
   try {
+    ensureRuntimeDataFiles();
     if (fs.existsSync(METRICS_FILE)) {
       const data = JSON.parse(fs.readFileSync(METRICS_FILE, 'utf-8'));
       if (data[serviceKey]?.current) {
