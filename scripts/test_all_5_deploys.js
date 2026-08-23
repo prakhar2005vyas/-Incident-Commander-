@@ -64,7 +64,7 @@ async function run() {
         summary: d.summary,
         simulated_failures: `${sim.failures} / 1000`,
         measured_error_rate: `${(mcp.rate * 100).toFixed(2)}%`,
-        status: mcp.rate < 0.05 ? 'HEALTHY (< 1%)' : 'DEGRADED (> 20%)',
+        status: mcp.rate < 0.05 ? 'HEALTHY (< 5%)' : 'DEGRADED (>= 5%)',
         raw_mcp_response: mcp,
       });
     }

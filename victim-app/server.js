@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,8 +14,50 @@ const STATE_FILE = path.join(DATA_DIR, 'active_state.json');
 const DEPLOYS_FILE = path.join(DATA_DIR, 'deploys.json');
 const METRICS_FILE = path.join(DATA_DIR, 'metrics_store.json');
 
+// Ensure runtime data directory and default state files exist
+function ensureRuntimeDataFiles() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
+  if (!fs.existsSync(STATE_FILE)) {
+    const defaultState = {
+      service: 'checkout',
+      active_deploy: 'deploy-5',
+      active_tag: 'v1.3.0',
+      last_updated: new Date().toISOString(),
+    };
+    fs.writeFileSync(STATE_FILE, JSON.stringify(defaultState, null, 2));
+  }
+
+  if (!fs.existsSync(METRICS_FILE)) {
+    const defaultMetrics = {
+      checkout: {
+        current: {
+          rate: 0.278,
+          p95_ms: 3100.0,
+          timestamp: new Date().toISOString(),
+          deploy_id: 'deploy-5',
+          sample_count: 1000,
+        },
+        history: [
+          { deploy_id: 'deploy-1', rate: 0.008, p95_ms: 120.0, timestamp: '2026-08-22T19:30:00.000Z' },
+          { deploy_id: 'deploy-2', rate: 0.009, p95_ms: 115.0, timestamp: '2026-08-22T20:30:00.000Z' },
+          { deploy_id: 'deploy-3', rate: 0.245, p95_ms: 2850.0, timestamp: '2026-08-22T21:30:00.000Z' },
+          { deploy_id: 'deploy-4', rate: 0.261, p95_ms: 2920.0, timestamp: '2026-08-22T22:30:00.000Z' },
+          { deploy_id: 'deploy-5', rate: 0.278, p95_ms: 3100.0, timestamp: '2026-08-23T04:30:00.000Z' },
+        ],
+      },
+    };
+    fs.writeFileSync(METRICS_FILE, JSON.stringify(defaultMetrics, null, 2));
+  }
+}
+
+ensureRuntimeDataFiles();
+
 function getActiveDeploy() {
   try {
+    ensureRuntimeDataFiles();
     const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
     const deploys = JSON.parse(fs.readFileSync(DEPLOYS_FILE, 'utf-8'));
     const active = deploys.find(d => d.id === state.active_deploy) || deploys[deploys.length - 1];
@@ -27,9 +69,10 @@ function getActiveDeploy() {
 
 function getMetricsStore() {
   try {
+    ensureRuntimeDataFiles();
     return JSON.parse(fs.readFileSync(METRICS_FILE, 'utf-8'));
   } catch {
-    return { checkout: { current: { rate: 0.278, p95_ms: 3100.0, timestamp: new Date().toISOString() } } };
+    return { checkout: { current: { rate: 0.278, p95_ms: 3100.0, timestamp: new Date().toISOString() }, history: [] } };
   }
 }
 
@@ -57,7 +100,7 @@ app.post('/checkout', (req, res) => {
   const active = getActiveDeploy();
   const { cart_id = 'cart-default', amount = 49.99, user_id = 'user-anon' } = req.body || {};
 
-  // Simulated latency jitter around p95
+  // NOTE: Simulated latency in response body vs actual HTTP delay is a known simplification; error rate is the primary signal for incident detection.
   const simulatedLatency = active.error_rate > 0.05 ? Math.floor(2000 + Math.random() * 1500) : Math.floor(80 + Math.random() * 60);
 
   // Failure probability determined by active deploy error rate
@@ -90,6 +133,15 @@ app.post('/checkout', (req, res) => {
 // Traffic simulation trigger
 app.post('/simulate', (req, res) => {
   const { requests = 100 } = req.body || {};
+
+  // Validation: reject non-numeric or non-positive values to prevent NaN/Infinity
+  if (typeof requests !== 'number' || !Number.isInteger(requests) || requests <= 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid requests count: requests must be a positive integer greater than 0',
+    });
+  }
+
   const active = getActiveDeploy();
   let failures = 0;
 
@@ -101,7 +153,7 @@ app.post('/simulate', (req, res) => {
   const timestamp = new Date().toISOString();
 
   const store = getMetricsStore();
-  store.checkout = store.checkout || { history: [] };
+  store.checkout = store.checkout || {};
   store.checkout.current = {
     rate: measuredRate,
     p95_ms: active.p95_latency_ms,
@@ -109,6 +161,18 @@ app.post('/simulate', (req, res) => {
     deploy_id: active.id,
     sample_count: requests,
   };
+
+  // Append to timeline history for Phase 5 bisection and Phase 7 UI
+  if (!Array.isArray(store.checkout.history)) {
+    store.checkout.history = [];
+  }
+  store.checkout.history.push({
+    deploy_id: active.id,
+    rate: measuredRate,
+    p95_ms: active.p95_latency_ms,
+    timestamp,
+    sample_count: requests,
+  });
 
   try {
     fs.writeFileSync(METRICS_FILE, JSON.stringify(store, null, 2));

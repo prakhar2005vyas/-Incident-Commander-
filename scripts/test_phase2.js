@@ -4,6 +4,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import http from 'node:http';
+import app from '../victim-app/server.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -13,31 +15,75 @@ async function testPhase2() {
   console.log('Phase 2 Verification: Victim App & Metrics MCP Server');
   console.log('========================================================\n');
 
-  // 1. Verify files exist
+  // 1. Verify tracked files exist
   const requiredFiles = [
     'victim-app/server.js',
     'victim-app/data/deploys.json',
-    'victim-app/data/active_state.json',
-    'victim-app/data/metrics_store.json',
     'mcp-servers/metrics/index.js',
   ];
 
   for (const rel of requiredFiles) {
     const p = path.join(ROOT_DIR, rel);
     if (!fs.existsSync(p)) {
-      throw new Error(`Missing expected file: ${rel}`);
+      throw new Error(`Missing expected tracked file: ${rel}`);
     }
     console.log(`[OK] Found ${rel}`);
   }
 
-  // 2. Test Deploys Data
+  // 2. Test Deploys Seed Data
   const deploys = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'victim-app/data/deploys.json'), 'utf-8'));
   console.log(`\n[OK] Loaded ${deploys.length} seeded deploys:`);
   deploys.forEach(d => {
     console.log(`     ${d.id} (${d.tag}) - Error rate: ${(d.error_rate * 100).toFixed(1)}%, p95: ${d.p95_latency_ms}ms -> ${d.summary}`);
   });
 
-  // 3. Connect to Metrics MCP Server via stdio
+  // 3. Test HTTP /simulate validation & history persistence
+  console.log('\n--- Testing /simulate Validation & History Persistence ---');
+  const server = http.createServer(app);
+  await new Promise(resolve => server.listen(4003, resolve));
+
+  try {
+    // Test invalid requests <= 0
+    const negRes = await fetch('http://localhost:4003/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: -5 }),
+    });
+    if (negRes.status !== 400) {
+      throw new Error(`Expected 400 for negative requests count, got ${negRes.status}`);
+    }
+    console.log('[OK] /simulate rejects negative requests count with 400');
+
+    // Test invalid non-numeric requests
+    const strRes = await fetch('http://localhost:4003/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: 'invalid' }),
+    });
+    if (strRes.status !== 400) {
+      throw new Error(`Expected 400 for non-numeric requests count, got ${strRes.status}`);
+    }
+    console.log('[OK] /simulate rejects non-numeric requests count with 400');
+
+    // Test valid simulate appends history
+    const simRes = await fetch('http://localhost:4003/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: 200 }),
+    });
+    const simData = await simRes.json();
+    console.log('[OK] /simulate valid run measured rate:', simData.measured_error_rate);
+
+    const store = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'victim-app/data/metrics_store.json'), 'utf-8'));
+    if (!Array.isArray(store.checkout?.history) || store.checkout.history.length === 0) {
+      throw new Error('Expected store.checkout.history to contain array of telemetry snapshots');
+    }
+    console.log(`[OK] store.checkout.history length: ${store.checkout.history.length} snapshots`);
+  } finally {
+    server.close();
+  }
+
+  // 4. Connect to Metrics MCP Server via stdio
   console.log('\n--- Connecting to Metrics MCP Server via stdio ---');
   const transport = new StdioClientTransport({
     command: 'node',
